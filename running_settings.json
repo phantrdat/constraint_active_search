@@ -1,106 +1,91 @@
 {
     "tasks": [
         {
-            "function_name": "binh_and_korn",
-            "num_iterations": 50,
-            "n_init": 5,
-            "punchout_radius": 0.1
+            "function_name": "griewank8",
+            "num_iterations": 400,
+            "n_init": 14,
+            "punchout_radius": 0.25
         }
     ],
     "candidate_tasks": [
         {
-            "function_name": "toy_2d",
-            "num_iterations": 25,
-            "n_init": 5,
-            "punchout_radius": 0.5
+            "function_name": "concentric_shells_hard",
+            "num_iterations": 150,
+            "n_init": 10,
+            "punchout_radius": 0.01
         },
         {
-            "function_name": "yf2d",
-            "num_iterations": 25,
-            "n_init": 5,
-            "punchout_radius": 0.5
-        },
-        {
-            "function_name": "six_hump_camel",
-            "num_iterations": 25,
-            "n_init": 5,
-            "punchout_radius": 0.5
-        },
-        {
-            "function_name": "binh_and_korn",
-            "num_iterations": 25,
-            "n_init": 5
-        },
-        {
-            "function_name": "fonseca_fleming",
-            "num_iterations": 25,
-            "n_init": 5,
-            "punchout_radius": 0.5
-        },
-        {
-            "function_name": "kursawe",
-            "num_iterations": 25,
-            "n_init": 5,
+            "function_name": "ackley10",
+            "num_iterations": 250,
+            "n_init": 16,
             "punchout_radius": 0.5
         },
         {
             "function_name": "rosenbrock_5d_mod",
-            "num_iterations": 100,
-            "n_init": 12,
-            "punchout_radius": 0.5
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.25
         },
         {
-            "function_name": "hartmann6",
+            "function_name": "toy_2d_easy",
             "num_iterations": 50,
-            "n_init": 12,
-            "punchout_radius": 0.5
+            "n_init": 5,
+            "punchout_radius": 0.1
         },
         {
-            "function_name": "ackley10",
-            "num_iterations": 100,
-            "n_init": 20
-        },
-        {
-            "function_name": "rosenbrock5",
-            "num_iterations": 40,
-            "n_init": 10,
-            "punchout_radius": 0.5
-        },
-        {
-            "function_name": "styblinski_tang5",
-            "num_iterations": 40,
-            "n_init": 10,
-            "punchout_radius": 0.5
-        },
-        {
-            "function_name": "griewank8",
-            "num_iterations": 80,
-            "n_init": 16
-        },
-        {
-            "function_name": "levy4",
-            "num_iterations": 40,
-            "n_init": 10,
-            "punchout_radius": 0.5
-        },
-        {
-            "function_name": "dixon_price6",
+            "function_name": "fonseca_fleming",
             "num_iterations": 50,
-            "n_init": 12,
-            "punchout_radius": 0.5
+            "n_init": 5,
+            "punchout_radius": 0.1
         },
         {
-            "function_name": "michalewicz10",
-            "num_iterations": 100,
+            "function_name": "binh_and_korn",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.1
+        },
+        {
+            "function_name": "concentric_shells_hard",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.1
+        },
+        {
+            "function_name": "rosenbrock_5d_mod",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.1
+        },
+        {
+            "function_name": "rosenbrock_8d_hard",
+            "num_iterations": 150,
             "n_init": 20,
-            "punchout_radius": 0.5
+            "punchout_radius": 0.1
+        },
+        {
+            "function_name": "gmm_2d_mod",
+            "num_iterations": 100,
+            "n_init": 10,
+            "punchout_radius": 0.1
+        },
+        {
+            "function_name": "gmm_5d_hard",
+            "num_iterations": 150,
+            "n_init": 20,
+            "punchout_radius": 0.1
+        },
+        {
+            "function_name": "gmm_10d_needle",
+            "num_iterations": 200,
+            "n_init": 20,
+            "punchout_radius": 0.1
         }
     ],
     "baselines": [
         "LookaheadCAS",  
         "VolumeCAS", 
         "ECI", 
-        "Straddle",
-        "SEQ"
+        "SEQ",
+        "Straddle"
     ]
 }

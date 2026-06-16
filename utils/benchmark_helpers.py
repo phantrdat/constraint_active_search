@@ -1,3 +1,4 @@
+
 from networkx import radius
 import torch
 from botorch.models import ModelListGP, SingleTaskGP
@@ -17,7 +18,7 @@ def identify_feasible(Y, constraints):
     return feasible
 
 
-def compute_metrics(train_X, train_Y, S_grid_X, constraints, ref_point, radius, bounds=None):
+def compute_metrics(train_X, train_Y, S_grid_X, constraints, ref_point, radius, bounds=None, verbose=False):
     """
     Computes the 4 benchmarking metrics at the current iteration.
     """
@@ -29,30 +30,26 @@ def compute_metrics(train_X, train_Y, S_grid_X, constraints, ref_point, radius, 
     # Fill distance and coverage recall measure the representation of the feasible region S in parameter space.
     if len(S_grid_X) > 0 and len(train_X) > 0:
         # Filter train_X to only include points that are actually feasible
-        observed_feasible_X = train_X[feas_mask]
+        # observed_feasible_X = train_X[feas_mask]
         
-        if len(observed_feasible_X) > 0:
-            # Normalize coordinates to [0, 1] if bounds are provided.
-            # This ensures radius=0.1 consistently means "within 10% of the range"
-            # and prevents cov_recall from being 0.0 due to high-dimensional distance scaling.
-            if bounds is not None:
-                S_ref = (S_grid_X - bounds[0]) / (bounds[1] - bounds[0] + 1e-9)
-                obs_ref = (observed_feasible_X - bounds[0]) / (bounds[1] - bounds[0] + 1e-9)
-            else:
-                S_ref, obs_ref = S_grid_X, observed_feasible_X
-
-            dists = torch.cdist(S_ref, obs_ref)
-            min_dists = dists.min(dim=1).values
-
-            # 2. Fill Distance (normalized if bounds provided)
-            fill_dist = min_dists.max().item()
-
-            # 3. Coverage Recall
-            covered_count = (min_dists <= radius).sum().item()
-            cov_recall = covered_count / len(S_grid_X)
+        # Normalize coordinates to [0, 1] if bounds are provided.
+        # This ensures radius=0.1 consistently means "within 10% of the range"
+        # and prevents cov_recall from being 0.0 due to high-dimensional distance scaling.
+        if bounds is not None:
+            S_ref = (S_grid_X - bounds[0]) / (bounds[1] - bounds[0] + 1e-9)
+            obs_ref = (train_X - bounds[0]) / (bounds[1] - bounds[0] + 1e-9)
         else:
-            fill_dist = float("nan")
-            cov_recall = 0.0
+            S_ref, obs_ref = S_grid_X, train_X
+
+        dists = torch.cdist(S_ref, obs_ref)
+        min_dists = dists.min(dim=1).values
+
+        # 2. Fill Distance (normalized if bounds provided)
+        fill_dist = min_dists.max().item()
+
+        # 3. Coverage Recall
+        covered_count = (min_dists <= radius).sum().item()
+        cov_recall = covered_count / len(S_grid_X)
     else:
         fill_dist = float("nan")
         cov_recall = 0.0
@@ -67,15 +64,8 @@ def compute_metrics(train_X, train_Y, S_grid_X, constraints, ref_point, radius, 
     else:
         hv_val = 0.0
     
-    # print("num observed feasible =", len(observed_feasible_X))
-
-    # print(
-    #     "min/mean/max dist:",
-    #     min_dists.min().item(),
-    #     min_dists.mean().item(),
-    #     min_dists.max().item())
-
-    # print("radius =", radius)
+    if verbose:
+        print(f"Min dist: {min_dists.min().item():.4f}| Mean dist: {min_dists.mean().item():.4f}| Max dist: {min_dists.max().item():.4f}")
     
     return pos_samples, fill_dist, hv_val, cov_recall
 

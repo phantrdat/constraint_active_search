@@ -64,9 +64,8 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
         feasible_mask = identify_feasible(Y_grid, constraints)
         S_grid_X = X_grid[feasible_mask]
         
-        print("S size =", len(S_grid_X))
-        print("feasible fraction =", feasible_mask.float().mean().item())
-        print("constraints =", constraints)
+        print(f"Experiment: {experiment_name} | Dim: {dim} | S_size: {len(S_grid_X)} | Feasible Fraction: {feasible_mask.float().mean().item():.4f}")
+       
         
         if len(S_grid_X) == 0:
             print(f"WARNING: No feasible points found in ground-truth grid for '{experiment_name}'. "
@@ -215,7 +214,7 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
                     constraints, 
                     ref_point, 
                     punchout_radius,
-                    bounds=bounds
+                    bounds=bounds, verbose=args.v
                 )
                 trial_metrics["pos_samples"].append(pos)
                 trial_metrics["fill_dist"].append(fd)
@@ -258,7 +257,11 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
 if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore")
+    import argparse
     
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", action='store_true', default=False, help="Whether to print verbose output")
+    args = parser.parse_args()
     running_settings = json.load(open(f"{BASE_DIR}/running_settings.json"))
     tasks = running_settings["tasks"]
     baselines = running_settings["baselines"]

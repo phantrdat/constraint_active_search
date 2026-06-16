@@ -1,0 +1,30 @@
+{
+    "tasks": [
+         {
+            "function_name": "concentric_shells_hard",
+            "num_iterations": 150,
+            "n_init": 10,
+            "punchout_radius": 0.01
+        },
+        {
+            "function_name": "ackley10",
+            "num_iterations": 250,
+            "n_init": 16,
+            "punchout_radius": 0.5
+        },
+        {
+            "function_name": "rosenbrock_5d_mod",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.25
+        }
+    ],
+    
+    "baselines": [
+        "LookaheadCAS",  
+        "VolumeCAS", 
+        "ECI", 
+        "Straddle",
+        "SEQ"
+    ]
+}

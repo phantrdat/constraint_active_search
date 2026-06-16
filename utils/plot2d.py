@@ -56,9 +56,9 @@ def plot_results(X, Y, task_func, bounds, constraints, figpath):
         .prod(dim=-1)
         .to(torch.bool)
     )
-    ax.plot(X[feasible_inds, 0].cpu(), X[feasible_inds, 1].cpu(), "sg", label="Feasible")
+    ax.plot(X[feasible_inds, 0].cpu(), X[feasible_inds, 1].cpu(), "sg", label="Feasible", markersize=2)
     ax.plot(
-        X[~feasible_inds, 0].cpu(), X[~feasible_inds, 1].cpu(), "sr", label="Infeasible"
+        X[~feasible_inds, 0].cpu(), X[~feasible_inds, 1].cpu(), "sr", label="Infeasible", markersize=2
     )
 
     ax.legend(loc=[0.7, 0.05])

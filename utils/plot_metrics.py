@@ -52,7 +52,8 @@ def plot_metrics(metrics_history):
             
             # Plot the mean line
             marker_style = baseline_markers.get(baseline, "x") # Use 'x' as a default
-            line, = ax.plot(iterations, mean_vals, label=baseline, marker=marker_style, markersize=4, markevery=2)
+            n_points_to_draw = len(mean_vals)//10  # Draw markers every 10% of the iterations
+            line, = ax.plot(iterations, mean_vals, label=baseline, marker=marker_style, markersize=4, markevery=n_points_to_draw)
             
             # Draw the shaded standard deviation region
             ax.fill_between(
