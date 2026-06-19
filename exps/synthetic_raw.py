@@ -6,6 +6,23 @@ import math
 # Scalability checks for GP surrogate modeling and acquisition optimization.
 # =====================================================================
 
+def toy_2d_multiobjective(X, noise_std=0.05):
+    """2D spherical objectives with a massive, connected intersection."""
+    y1 = 1.0 - torch.norm(X - 0.25, dim=-1)**2
+    y2 = 1.0 - torch.norm(X - 0.75, dim=-1)**2
+    y1 += noise_std * torch.randn_like(y1)
+    y2 += noise_std * torch.randn_like(y2)
+    return torch.stack([y1, y2], dim=-1)
+def fonseca_fleming_multiobjective(X, noise_std=0.01):
+    """2D smooth, conflicting exponential curves."""
+    term1 = (X[..., 0] - 1/math.sqrt(2))**2 + (X[..., 1] - 1/math.sqrt(2))**2
+    term2 = (X[..., 0] + 1/math.sqrt(2))**2 + (X[..., 1] + 1/math.sqrt(2))**2
+    y1 = 1.0 - torch.exp(-term1)
+    y2 = 1.0 - torch.exp(-term2)
+    y1 += noise_std * torch.randn_like(y1)
+    y2 += noise_std * torch.randn_like(y2)
+    return torch.stack([y1, y2], dim=-1)
+
 def binh_and_korn_multiobjective(X, noise_std=0.5):
     """
     Binh and Korn function.
@@ -22,11 +39,68 @@ def binh_and_korn_multiobjective(X, noise_std=0.5):
     
     return torch.stack([y1, y2], dim=-1)
 
+def yf2d_multiobjective(X, noise_std=0.0):
+    """A 2D function with two different Gaussian-like peaks."""
+    v = torch.exp(-2 * (X[..., 0] - 0.3) ** 2 - 4 * (X[..., 1] - 0.6) ** 2)
+    res = torch.stack((v, v), dim=-1)
+    return res + noise_std * torch.randn_like(res)
 
+def six_hump_camel_multiobjective(X, noise_std=0.05):
+    """
+    The Six-hump camel function, modified to have two outputs.
+    It has two global minima at (0.0898, -0.7126) and (-0.0898, 0.7126).
+    """
+    x1 = X[..., 0]
+    x2 = X[..., 1]
+    term1 = (4 - 2.1 * x1**2 + (x1**4) / 3) * x1**2
+    term2 = x1 * x2
+    term3 = (-4 + 4 * x2**2) * x2**2
+    y1 = term1 + term2 + term3
+    y2 = torch.sin(x1 * 3) + torch.cos(x2 * 3)
+    res = torch.stack([y1, y2], dim=-1)
+    return res + noise_std * torch.randn_like(res)
 
+def kursawe_multiobjective(X, noise_std=0.05):
+    """
+    Kursawe function (2D).
+    X: Tensor of shape (..., 2)
+    """
+    x1 = X[..., 0]
+    x2 = X[..., 1]
+    
+    y1 = -10 * torch.exp(-0.2 * torch.sqrt(x1**2 + x2**2))
+    y2 = torch.abs(x1)**0.8 + 5 * torch.sin(x1**3) + torch.abs(x2)**0.8 + 5 * torch.sin(x2**3)
+    
+    res = torch.stack([y1, y2], dim=-1)
+    return res + noise_std * torch.randn_like(res)
 
+def hartmann6_multiobjective(X, noise_std=0.01):
+    """6D Hartmann function with 2 competing objectives."""
+    alpha1 = torch.tensor([1.0, 1.2, 3.0, 3.2], dtype=X.dtype, device=X.device)
+    alpha2 = torch.tensor([3.2, 3.0, 1.2, 1.0], dtype=X.dtype, device=X.device)
+    A = torch.tensor([
+        [10.0, 3.0, 17.0, 3.5, 1.7, 8.0],
+        [0.05, 10.0, 17.0, 0.1, 8.0, 14.0],
+        [3.0, 3.5, 1.7, 10.0, 17.0, 8.0],
+        [17.0, 8.0, 0.05, 10.0, 0.1, 14.0]
+    ], dtype=X.dtype, device=X.device)
+    P = 1e-4 * torch.tensor([
+        [1312, 1696, 5569, 124, 8283, 5886],
+        [2329, 4135, 8307, 3736, 1004, 9991],
+        [2348, 1451, 3522, 2883, 3047, 6650],
+        [4047, 8828, 8732, 5743, 1091, 381]
+    ], dtype=X.dtype, device=X.device)
+    
+    def evaluate_hartmann(alpha):
+        val = torch.zeros(X.shape[:-1], dtype=X.dtype, device=X.device)
+        for i in range(4):
+            exponent = torch.sum(A[i] * (X - P[i])**2, dim=-1)
+            val += alpha[i] * torch.exp(-exponent)
+        return val
 
-
+    y1 = evaluate_hartmann(alpha1)
+    y2 = evaluate_hartmann(alpha2)
+    return torch.stack([y1 + noise_std * torch.randn_like(y1), y2 + noise_std * torch.randn_like(y2)], dim=-1)
 
 def ackley_multiobjective(X, noise_std=0.05):
     """
@@ -250,20 +324,50 @@ def get_experiment_setup(name):
     """
     setups = {
         # --- TIER 1: Low-Dimensional / Connected Baselines ---
-        "binh_and_korn_easy": (
-            binh_and_korn_multiobjective,
-            torch.tensor([[0.0, 0.0], [5.0, 3.0]], dtype=torch.double),
-            [("lt", 65.0), ("lt", 30.0)]  # Feasible Fraction: 0.5256
+        "toy_2d": (
+            toy_2d_multiobjective,
+            torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+            [("gt", 0.6), ("gt", 0.5)]
         ),
-        "binh_and_korn_moderate": (
-            binh_and_korn_multiobjective,
-            torch.tensor([[0.0, 0.0], [5.0, 3.0]], dtype=torch.double),
-            [("lt", 40.0), ("lt", 25.0)]  # Feasible Fraction: 0.1874
+        "yf2d": (
+            yf2d_multiobjective,
+            torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+            [("lt", 0.75), ("gt", 0.55)]
         ),
-        "binh_and_korn_hard": (
+        "six_hump_camel": (
+            six_hump_camel_multiobjective,
+            torch.tensor([[-2.0, -1.0], [2.0, 1.0]], dtype=torch.double),
+            [("lt", -1.0), ("gt", 1.5)]
+        ),
+        "toy_2d_easy": (
+            toy_2d_multiobjective,
+            torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+            [("gt", 0.6), ("gt", 0.5)] # Vf ~ 35% (Easy)
+        ),
+        "fonseca_fleming": (
+            fonseca_fleming_multiobjective,
+            torch.tensor([[-4.0, -4.0], [4.0, 4.0]], dtype=torch.double),
+            [("gt", 0.95), ("gt", 0.95)]
+        ),
+        "binh_and_korn": (
             binh_and_korn_multiobjective,
             torch.tensor([[0.0, 0.0], [5.0, 3.0]], dtype=torch.double),
-            [("lt", 40.0), ("lt", 18.0)]  # Feasible Fraction: 0.0315
+            [("lt", 60.0), ("lt", 20.0)] 
+        ),
+        "kursawe": (
+            kursawe_multiobjective,
+            torch.tensor([[-5.0, -5.0], [5.0, 5.0]], dtype=torch.double),
+            [("lt", -4.0), ("lt", 5.0)]
+        ),
+        "hartmann6": (
+            hartmann6_multiobjective,
+            torch.tensor([[0.0] * 6, [1.0] * 6], dtype=torch.double),
+            [("gt", 1.5), ("gt", 1.5)]
+        ),
+        "concentric_shells_hard": (
+            concentric_shells_mo,
+            torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+            [("gt", 0.5), ("gt", 0.5)] # Vf ~ 4.2% (Hard, highly non-convex)
         ),
         
         # --- TIER 2: Flat Valleys & Redundant Contours ---
@@ -273,7 +377,7 @@ def get_experiment_setup(name):
             [("lt", 1200.0), ("gt", 0)] # Feasible Fraction: 0.3914
         ),
         
-        "rosenbrock_5d_moderate": (
+        "rosenbrock_5d_medium": (
             lambda X, **kwargs: scalable_rosenbrock_mo(X, M=2, **kwargs),
             torch.tensor([[-2.0]*5, [2.0]*5], dtype=torch.double),
             [("lt", 550.0), ("gt", 2)] # Feasible Fraction: 0.3914
@@ -284,46 +388,62 @@ def get_experiment_setup(name):
             torch.tensor([[-2.0]*5, [2.0]*5], dtype=torch.double),
             [("lt", 400.0), ("gt", 2.5)] # Feasible Fraction: 0.1431
         ),
+        "rosenbrock_8d_hard": (
+            lambda X, **kwargs: scalable_rosenbrock_mo(X, M=3, **kwargs),
+            torch.tensor([[-2.0]*8, [2.0]*8], dtype=torch.double),
+            [("lt", 800.0), ("gt", 4.0), ("lt", 15.0)] # Vf ~ 2.1% (Hard)
+        ),
+        "rosenbrock5": (
+            rosenbrock_multiobjective,
+            torch.tensor([[-2.0] * 5, [2.0] * 5], dtype=torch.double),
+            [("lt", 500.0), ("gt", 2.0)]
+        ),
+        
+        
         # --- TIER 3: Isolated Multimodal Islands ---
-        "griewank8_easy": (
+        "gmm_2d_mod": (
+            lambda X, **kwargs: multimodal_gmm_mo(X, M=2, **kwargs),
+            torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+            [("gt", 0.8), ("gt", 0.8)] # Vf ~ 14.5% (Disconnected Islands)
+        ),
+        "gmm_5d_hard": (
+            lambda X, **kwargs: multimodal_gmm_mo(X, M=3, **kwargs),
+            torch.tensor([[0.0]*5, [1.0]*5], dtype=torch.double),
+            [("gt", 1.0), ("gt", 1.0), ("gt", 0.8)] # Vf ~ 3.1% (Deep sparse pockets)
+        ),
+        "styblinski_tang5": (
+            styblinski_tang_multiobjective,
+            torch.tensor([[-5.0] * 5, [5.0] * 5], dtype=torch.double),
+            [("lt", -50.0), ("lt", 100.0)]
+        ),
+        "griewank8": (
             griewank8_multiobjective,
             torch.tensor([[-5.0] * 8, [5.0] * 8], dtype=torch.double),
-            [("lt", 1.2), ("lt", 1.2), ("lt", 66.0), ("lt", 20.0)] 
-            #   Feasible Fraction: 0.4579
+            [("lt", 15.0), ("lt", 25.0), ("lt", 30.0), ("lt", 15.0)]
         ),
-        "griewank8_moderate": (
-            griewank8_multiobjective,
-            torch.tensor([[-5.0] * 8, [5.0] * 8], dtype=torch.double),
-            [("lt", 1.2), ("lt", 1.1), ("lt", 55.0), ("lt", 17.0)]
-            #   Feasible Fraction:  0.2084
+        "levy4": (
+            levy4_multiobjective,
+            torch.tensor([[-5.0] * 4, [5.0] * 4], dtype=torch.double),
+            [("lt", 5.0), ("lt", 5.0), ("gt", 0.0)]
         ),
-        "griewank8_hard": (
-            griewank8_multiobjective,
-            torch.tensor([[-5.0] * 8, [5.0] * 8], dtype=torch.double),
-            [("lt", 1.02), ("lt", 1.02), ("lt", 45.0), ("lt", 15.0)]     
-            #   Feasible Fraction: 0.0519
+        "ackley10": (
+            ackley_multiobjective,
+            torch.tensor([[-5.0] * 10, [5.0] * 10], dtype=torch.double),
+            [("lt", 10.0), ("lt", 10.0)]
         ),
+        
         # --- TIER 4: High-Dimensional Needle-in-a-Haystack ---
-        "michalewicz10_easy": (
-            michalewicz10_multiobjective,
-            torch.tensor([[0.0] * 10, [math.pi] * 10], dtype=torch.double),
-            [("lt", -1.0), ("lt", 1.0), ("lt", 50.0), ("lt", 20.0), ("gt", -5.0)]
-            # Feasible Fraction: 0.4656
+        "gmm_10d_needle": (
+            lambda X, **kwargs: multimodal_gmm_mo(X, M=5, **kwargs),
+            torch.tensor([[0.0]*10, [1.0]*10], dtype=torch.double),
+            [("gt", 1.2), ("gt", 1.2), ("gt", 1.0), ("gt", 1.0), ("gt", 0.8)] 
+            # Vf < 0.1% (Needle-in-a-haystack, 10D space, 5 active constraints)
         ),
-        
-        "michalewicz10_moderate": (
+        "michalewicz10": (
             michalewicz10_multiobjective,
             torch.tensor([[0.0] * 10, [math.pi] * 10], dtype=torch.double),
-            [("lt", -0.5), ("lt", 0.1), ("lt", 27.0), ("lt", 15.0), ("gt", -4.6)]
-            # Feasible Fraction: 0.1573
+            [("lt", -5.0), ("lt", -3.0), ("lt", 50.0), ("lt", 20.0), ("gt", -5.0)]
         ),
-        
-        "michalewicz10_hard": (
-            michalewicz10_multiobjective,
-            torch.tensor([[0.0] * 10, [math.pi] * 10], dtype=torch.double),
-            [("lt", -1.5), ("lt", 0.0), ("lt", 30.0), ("lt", 15.0), ("gt", -4.0)]
-            # Feasible Fraction: 0.0519
-        )
     }
     
     if name not in setups:

@@ -1,103 +1,166 @@
 {
     "tasks": [
         {
-            "function_name": "rosenbrock_5d_mod",
+            "function_name": "binh_and_korn_easy",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.05
+        },
+        {
+            "function_name": "binh_and_korn_moderate",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.05
+        },
+        {
+            "function_name": "binh_and_korn_hard",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.05
+        },
+
+        {
+            "function_name": "rosenbrock_5d_easy",
             "num_iterations": 200,
             "n_init": 10,
             "punchout_radius": 0.2
         },
         {
-            "function_name": "griewank8",
+            "function_name": "rosenbrock_5d_moderate",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.2
+        },
+        {
+            "function_name": "rosenbrock_5d_hard",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.2
+        },
+
+
+        {
+            "function_name": "griewank8_easy",
             "num_iterations": 400,
             "n_init": 14,
+            "punchout_radius": 0.35
+        },
+        {
+            "function_name": "griewank8_moderate",
+            "num_iterations": 400,
+            "n_init": 14,
+            "punchout_radius": 0.35
+        },
+        {
+            "function_name": "griewank8_hard",
+            "num_iterations": 400,
+            "n_init": 14,
+            "punchout_radius": 0.35
+        },
+
+
+        {
+            "function_name": "michalewicz10_easy",
+            "num_iterations": 800,
+            "n_init": 25,
             "punchout_radius": 0.25
         },
         {
-            "function_name": "ackley10",
-            "num_iterations": 250,
-            "n_init": 16,
-            "punchout_radius": 0.5
+            "function_name": "michalewicz10_moderate",
+            "num_iterations": 800,
+            "n_init": 25,
+            "punchout_radius": 0.25
+        },
+        {
+            "function_name": "michalewicz10_hard",
+            "num_iterations": 800,
+            "n_init": 25,
+            "punchout_radius": 0.25
         }
-        
     ],
     "candidate_tasks": [
         {
-            "function_name": "concentric_shells_hard",
-            "num_iterations": 150,
-            "n_init": 10,
-            "punchout_radius": 0.01
+            "function_name": "binh_and_korn_easy",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.02
         },
         {
-            "function_name": "ackley10",
-            "num_iterations": 250,
-            "n_init": 16,
-            "punchout_radius": 0.5
+            "function_name": "binh_and_korn_moderate",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.02
         },
         {
-            "function_name": "rosenbrock_5d_mod",
+            "function_name": "binh_and_korn_hard",
+            "num_iterations": 50,
+            "n_init": 5,
+            "punchout_radius": 0.02
+        },
+
+        {
+            "function_name": "rosenbrock_5d_easy",
             "num_iterations": 200,
             "n_init": 10,
+            "punchout_radius": 0.2
+        },
+        {
+            "function_name": "rosenbrock_5d_moderate",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.2
+        },
+        {
+            "function_name": "rosenbrock_5d_hard",
+            "num_iterations": 200,
+            "n_init": 10,
+            "punchout_radius": 0.2
+        },
+
+
+        {
+            "function_name": "griewank8_easy",
+            "num_iterations": 400,
+            "n_init": 14,
+            "punchout_radius": 0.35
+        },
+        {
+            "function_name": "griewank8_moderate",
+            "num_iterations": 400,
+            "n_init": 14,
+            "punchout_radius": 0.35
+        },
+        {
+            "function_name": "griewank8_hard",
+            "num_iterations": 400,
+            "n_init": 14,
+            "punchout_radius": 0.35
+        },
+
+
+        {
+            "function_name": "michalewicz10_easy",
+            "num_iterations": 800,
+            "n_init": 25,
             "punchout_radius": 0.25
         },
         {
-            "function_name": "toy_2d_easy",
-            "num_iterations": 50,
-            "n_init": 5,
-            "punchout_radius": 0.1
+            "function_name": "michalewicz10_moderate",
+            "num_iterations": 800,
+            "n_init": 25,
+            "punchout_radius": 0.25
         },
         {
-            "function_name": "fonseca_fleming",
-            "num_iterations": 50,
-            "n_init": 5,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "binh_and_korn",
-            "num_iterations": 50,
-            "n_init": 5,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "concentric_shells_hard",
-            "num_iterations": 200,
-            "n_init": 10,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "rosenbrock_5d_mod",
-            "num_iterations": 200,
-            "n_init": 10,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "rosenbrock_8d_hard",
-            "num_iterations": 150,
-            "n_init": 20,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "gmm_2d_mod",
-            "num_iterations": 100,
-            "n_init": 10,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "gmm_5d_hard",
-            "num_iterations": 150,
-            "n_init": 20,
-            "punchout_radius": 0.1
-        },
-        {
-            "function_name": "gmm_10d_needle",
-            "num_iterations": 200,
-            "n_init": 20,
-            "punchout_radius": 0.1
+            "function_name": "michalewicz10_hard",
+            "num_iterations": 800,
+            "n_init": 25,
+            "punchout_radius": 0.25
         }
     ],
     "baselines": [
-        "LookaheadCAS",  
-        "VolumeCAS", 
-        "ECI", 
+        "LookAheadCAS",
+        "VolumeCAS",
+        "ECI",
         "SEQ",
         "Straddle"
     ]

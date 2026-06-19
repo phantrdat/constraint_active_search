@@ -9,19 +9,24 @@ from botorch.models import SingleTaskGP, ModelListGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import SumMarginalLogLikelihood
 from botorch.optim import optimize_acqf
+from botorch.utils.sampling import draw_sobol_samples
+from tqdm import tqdm
 
+import time
 # Import the baselines you previously saved
 from baselines.eci import ExpectedCoverageImprovement
 from baselines.moc_cas import MOCCAS
 from baselines.seq import SingleObjectiveStraddle
 from baselines.straddle import Straddle
-from baselines.lookahead_cas import LookaheadCAS
+from baselines.lookahead_cas import LookAheadCAS
 from baselines.volume_cas import VolumeCAS
-from exps.drug import get_experiment_setup # Changed import
 from utils.plot2d import plot_results # This will be disabled for high-dim
 from utils.benchmark_helpers import compute_metrics, initialize_models, identify_feasible
 from utils.plot_metrics import plot_metrics
 from utils.constants import BASE_DIR
+from exps.synthetic import get_experiment_setup as get_synthetic_setup
+
+plt.rcParams.update({'text.usetex': False})
 # ==========================================
 # 4. Main Benchmarking Loop
 # ==========================================
@@ -29,47 +34,42 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # For drug experiment, task_func is an object with all data
-    is_drug_exp = experiment_name in ["3CLPro", "6T2W", "RTCB", "WRN"]
-    if is_drug_exp:
-        # Using a smaller subset for demonstration purposes to speed up initialization
-        task, bounds, constraints = get_experiment_setup(experiment_name, data_dir="data/DrugImprover/data", num_data_parts=20, device=device)
-        task_func = task
-        S_grid_X = task.S_pool_X # Ground truth feasible set in parameter space
-        ref_point = torch.zeros(5, device=device, dtype=torch.double) # 5 objectives
+    # Fallback to synthetic for original functionality
+    
+    task_func, bounds, constraints = get_synthetic_setup(experiment_name)
+    dim = bounds.shape[1]
+    
+    # Move bounds to device
+    bounds = bounds.to(device)
+    ref_point = torch.zeros(len(constraints), device=device, dtype=torch.double) # Dynamic size based on constraints
+
+    # For higher dimensions, a dense grid is computationally infeasible.
+    # We fallback to a large Monte Carlo sample to approximate the feasible region S.
+    if dim <= 2:
+        grid_x = torch.linspace(bounds[0, 0], bounds[1, 0], 100, device=device, dtype=torch.double)
+        grid_y = torch.linspace(bounds[0, 1], bounds[1, 1], 100, device=device, dtype=torch.double)
+        X1, X2 = torch.meshgrid(grid_x, grid_y, indexing="ij")
+        X_grid = torch.stack([X1.flatten(), X2.flatten()], dim=-1)
     else:
-        # Fallback to synthetic for original functionality
-        from exps.synthetic import get_experiment_setup as get_synthetic_setup
-        task_func, bounds, constraints = get_synthetic_setup(experiment_name)
-        dim = bounds.shape[1]
-        
-        # Move bounds to device
-        bounds = bounds.to(device)
-        ref_point = torch.zeros(len(constraints), device=device, dtype=torch.double) # Dynamic size based on constraints
+        # High-dimensional approximation using uniform random sampling
+        num_samples = 50000 
+        X_grid = bounds[0] + (bounds[1] - bounds[0]) * torch.rand(num_samples, dim, device=device, dtype=torch.double)
 
-        # For higher dimensions, a dense grid is computationally infeasible.
-        # We fallback to a large Monte Carlo sample to approximate the feasible region S.
-        if dim <= 2:
-            grid_x = torch.linspace(bounds[0, 0], bounds[1, 0], 100, device=device, dtype=torch.double)
-            grid_y = torch.linspace(bounds[0, 1], bounds[1, 1], 100, device=device, dtype=torch.double)
-            X1, X2 = torch.meshgrid(grid_x, grid_y, indexing="ij")
-            X_grid = torch.stack([X1.flatten(), X2.flatten()], dim=-1)
-        else:
-            # High-dimensional approximation using uniform random sampling
-            num_samples = 50000 
-            X_grid = bounds[0] + (bounds[1] - bounds[0]) * torch.rand(num_samples, dim, device=device, dtype=torch.double)
-
-        # Evaluate the grid in objective space and filter for feasible points
-        Y_grid = task_func(X_grid, noise_std=0.)
-        feasible_mask = identify_feasible(Y_grid, constraints)
-        S_grid_X = X_grid[feasible_mask]
-        
-        print(f"Experiment: {experiment_name} | Dim: {dim} | S_size: {len(S_grid_X)} | Feasible Fraction: {feasible_mask.float().mean().item():.4f}")
-       
-        
-        if len(S_grid_X) == 0:
-            print(f"WARNING: No feasible points found in ground-truth grid for '{experiment_name}'. "
-                  "Try increasing num_samples for the Monte Carlo approximation.")
+    # Evaluate the grid in objective space and filter for feasible points
+    Y_grid = task_func(X_grid, noise_std=0.)
+    
+    # for z in range(Y_grid.shape[1]):
+    #     print(f"Dim {z}, Min {torch.min(Y_grid[:, z]):.4f} | Max {torch.max(Y_grid[:, z]):.4f} | Mean {torch.mean(Y_grid[:, z]):.4f}")
+    
+    feasible_mask = identify_feasible(Y_grid, constraints)
+    S_grid_X = X_grid[feasible_mask]
+    
+    print(f"Experiment: {experiment_name} | Dim: {dim} | S_size: {len(S_grid_X)} | Feasible Fraction: {feasible_mask.float().mean().item():.4f}")
+    
+    
+    if len(S_grid_X) == 0:
+        print(f"WARNING: No feasible points found in ground-truth grid for '{experiment_name}'. "
+              "Try increasing num_samples for the Monte Carlo approximation.")
 
     dim = bounds.shape[1]
 
@@ -80,45 +80,43 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
                            "cov_recall": [], 
                            } for b in baselines}
     metrics_history["experiment_name"] = experiment_name
-
-    for baseline_id, baseline in enumerate(baselines):
-        baseline_dir = f"{BASE_DIR}/numerical_results/{baseline}_{experiment_name}"
-        os.makedirs(baseline_dir, exist_ok=True)
+    for trial in range(num_trials):
         
-        # Aggregated result file for the entire baseline
-        baseline_summary_file = f"{baseline_dir}/{experiment_name}_{baseline}_{num_trials}trials_{num_iterations}iterations_{n_init}init_summary.pt"
+        for baseline_id, baseline in enumerate(baselines):
+            
+            baseline_dir = f"{BASE_DIR}/numerical_results/{baseline}_{experiment_name}"
+            os.makedirs(baseline_dir, exist_ok=True)
+            
+            # Aggregated result file for the entire baseline
+            baseline_summary_file = f"{baseline_dir}/{experiment_name}_{baseline}_{num_trials}trials_{num_iterations}iterations_{n_init}init_summary.pt"
 
-        for trial in range(num_trials):
             # Define the specific file for this baseline, experiment, and trial
             trial_file = f"{baseline_dir}/{experiment_name}_{baseline}_trial_{trial+1}_{num_iterations}iterations_{n_init}init.pt"
             
-
+            pbar = tqdm(enumerate(range(num_iterations)), total=num_iterations, leave=False)
+            
             torch.manual_seed(0)
             if os.path.exists(trial_file):
-                print(f"--- Loading existing results for {baseline} | Trial {trial+1}/{num_trials} ---")
+                pbar.set_description(f"Exp {trial+1}/{num_trials} | {baseline} ({baseline_id + 1}/{len(baselines)})| Loading existing results...")
                 trial_metrics = torch.load(trial_file)
                 for metric in trial_metrics:
                     metrics_history[baseline][metric].append(trial_metrics[metric])
+                
+                time.sleep(0.5) # Pause for 0.5 seconds before closing
+                pbar.close()
                 continue
 
-            print(f"\n==========================================")
-            print(f"               BASELINE: {baseline} ({baseline_id + 1}/{len(baselines)}) | TRIAL {trial + 1}/{num_trials}")
-            print(f"==========================================")
             
             # Shared initial data for fairness via deterministic seeding per trial
             torch.manual_seed(trial)
-            if is_drug_exp:
-                initial_indices = torch.randperm(len(task.X_pool))[:n_init]
-                train_X = task.X_pool[initial_indices]
-                train_Y = task.Y_pool_normalized[initial_indices]
-            else:
-                train_X = bounds[0] + (bounds[1] - bounds[0]) * torch.rand(n_init, dim, device=device, dtype=torch.double)
-                train_Y = task_func(train_X)
+
+            train_X = bounds[0] + (bounds[1] - bounds[0]) * torch.rand(n_init, dim, device=device, dtype=torch.double)
+            train_Y = task_func(train_X)
 
             # Temporary storage for the current trial
             trial_metrics = {"pos_samples": [], "fill_dist": [], "hv": [], "cov_recall": []}
-
-            for i in range(num_iterations):
+            
+            for i, _ in pbar:
                 mll, model = initialize_models(train_X, train_Y, bounds)
                 fit_gpytorch_mll(mll)
 
@@ -152,14 +150,26 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
                         beta=1.96**2,
                         gamma=2.0
                     )
-                elif baseline == "LookaheadCAS":
-                    acqf = LookaheadCAS(
+                elif baseline == "LookAheadCAS":
+                    grid_Z = draw_sobol_samples(bounds, n=5000,q=1).squeeze(1)
+                    feasible_mask = identify_feasible(
+                        train_Y,
+                        constraints
+                    )
+
+                    train_X_feasible = train_X[feasible_mask]
+                    if train_X_feasible.shape[0] == 0:
+                        train_X_feasible = train_X[:1]
+                    acqf = LookAheadCAS(
                         model=model,
                         constraints=constraints,
-                        train_inputs=train_X,
+                        train_X=train_X_feasible,
+                        grid_Z=grid_Z,
+                        candidate_set=grid_Z,
+                        radius=punchout_radius,
+                        k=3,
                         beta=1.96**2,
-                        gamma=2.0,
-                        lambda_novelty=1.0
+                        gamma=2.0
                     )
                 elif baseline == "SEQ":
                     # 1. Determine which objective to focus on based on the current iteration
@@ -181,25 +191,21 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
                         threshold=threshold,
                         beta=4.0
                     )
-                # Optimize Acquisition Function
-                if is_drug_exp:
-                    # Discrete optimization over a random subset of the candidate pool
-                    candidate_indices = torch.randperm(len(task.X_pool), device=device)[:2048]
-                    candidate_X = task.X_pool[candidate_indices]
-                    with torch.no_grad():
-                        acq_values = acqf(candidate_X.unsqueeze(1))
-                    best_candidate_idx = torch.argmax(acq_values)
-                    candidates = candidate_X[best_candidate_idx].unsqueeze(0)
+                if baseline == "LookAheadCAS":
+                    X_cand = draw_sobol_samples(bounds, n=500, q=1)
+                    candidate_idx = acqf(X_cand).argmax()
+                    candidates = X_cand[candidate_idx]
                 else:
-                    # Continuous optimization for synthetic functions
+                # Optimize Acquisition Function
                     candidates, _ = optimize_acqf(
-                        acq_function=acqf,
-                        bounds=bounds,
-                        q=1,
-                        num_restarts=5,
-                        raw_samples=256,
-                    )
+                            acq_function=acqf,
+                            bounds=bounds,
+                            q=1,
+                            num_restarts=5,
+                            raw_samples=256,
+                        )
 
+            
                 new_X = candidates.detach()
                 new_Y = task_func(new_X)
 
@@ -221,8 +227,11 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
                 trial_metrics["hv"].append(hv)
                 trial_metrics["cov_recall"].append(cr)
                 
-                print(f"Iter {i+1:02d} | Pos: {pos:02d} | Fill Dist: {fd:.3f} | HV: {hv:.3f} | Cov Recall: {cr:.3f}")
-                
+
+                res = f"Iter {i+1:02d} | Pos: {pos:02d} | Fill Dist: {fd:.3f} | HV: {hv:.3f} | Cov Recall: {cr:.3f}"
+                pbar.set_description(f"Exp {trial+1}/{num_trials} | {baseline} ({baseline_id + 1}/{len(baselines)})| {res}")                
+            
+            pbar.close()
             # Store trial progression
             for metric in trial_metrics:
                 metrics_history[baseline][metric].append(trial_metrics[metric])
@@ -230,7 +239,7 @@ def run_benchmarks(baselines=["ECI"], num_trials=3, num_iterations=20, n_init=5,
             # Save individual trial results to disk
             torch.save(trial_metrics, trial_file)
             
-            if dim == 2 and not is_drug_exp:
+            if dim == 2:
                 figpath=f"{BASE_DIR}/figures/{baseline}_{experiment_name}/{experiment_name}_{baseline}_{experiment_name}_trial_{trial+1}_results.png" 
                 if not os.path.exists(os.path.dirname(figpath)):
                     os.makedirs(os.path.dirname(figpath), exist_ok=True)
@@ -265,6 +274,8 @@ if __name__ == "__main__":
     running_settings = json.load(open(f"{BASE_DIR}/running_settings.json"))
     tasks = running_settings["tasks"]
     baselines = running_settings["baselines"]
+    
+    print("Total tasks to run:", len(tasks))
     for t in tasks:
         history = run_benchmarks(baselines=baselines, num_trials=10, num_iterations=t["num_iterations"], n_init=t["n_init"], punchout_radius=t["punchout_radius"], experiment_name=t["function_name"])
-        plot_metrics(history)
+        # plot_metrics(history)

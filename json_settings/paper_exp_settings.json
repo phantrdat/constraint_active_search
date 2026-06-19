@@ -13,7 +13,7 @@
             "punchout_radius": 0.5
         },
         {
-            "function_name": "rosenbrock_5d_mod",
+            "function_name": "rosenbrock_5d_hard",
             "num_iterations": 250,
             "n_init": 10,
             "punchout_radius": 0.25

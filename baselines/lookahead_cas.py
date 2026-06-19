@@ -2,70 +2,123 @@ import torch
 from botorch.acquisition import AcquisitionFunction
 from botorch.utils.transforms import t_batch_mode_transform
 
-class LookaheadCAS(AcquisitionFunction):
-    """
-    Implements the 1-step look-ahead Constraint Active Search, combining
-    the VolumeCAS feasibility ratio with a novelty-promoting term.
-    The acquisition function is: α(x) = (Vol(B1(x)) / Vol(B(x)))^γ * Novel_Volume(x)
-    """
-    def __init__(self, model, constraints, train_inputs, beta=3.84, gamma=2.0, lambda_novelty=1.0):
-        """
-        Args:
-            model: A fitted BoTorch model.
-            constraints: A list of (direction, threshold) tuples.
-            train_inputs: Tensor of previously evaluated points in the input space.
-            beta: Controls the size of the confidence region. The confidence
-                interval is mu +/- sqrt(beta) * std. Default is 1.96**2.
-            gamma: Exponent for the feasibility ratio.
-            lambda_novelty: Weight for the novelty-promoting term.
-        """
-        super().__init__(model=model)
+
+class LookAheadCAS(AcquisitionFunction):
+    def __init__(
+        self,
+        model,
+        constraints,
+        train_X,
+        grid_Z,
+        candidate_set,
+        radius=0.1,
+        k=3,
+        beta=3.84,
+        gamma=2.0,
+    ):
+        super().__init__(model)
         self.constraints = constraints
-        self.train_inputs = train_inputs
+        self.radius = radius
+        self.k = k
         self.beta = beta
         self.gamma = gamma
-        self.lambda_novelty = lambda_novelty
-        
-        self.register_buffer("_thresholds", torch.tensor([thresh for _, thresh in constraints]))
+        self.register_buffer("train_X", train_X)
+        self.register_buffer("grid_Z", grid_Z)
+        self.register_buffer("candidate_set", candidate_set)
+        thresholds = torch.tensor(
+            [t for _, t in constraints],
+            dtype=train_X.dtype,
+            device=train_X.device
+        )
+        self.register_buffer("thresholds", thresholds)
 
+    ##################################################
+    # posterior feasibility p(z)
+    ##################################################
+    def posterior_feasibility(self):
+        posterior = self.model.posterior(self.grid_Z)
+        mu = posterior.mean
+        sigma = posterior.variance.sqrt()
+        mu = mu.squeeze(-2)
+        sigma = sigma.squeeze(-2)
+        normal = torch.distributions.Normal(0, 1)
+        probs = []
+        for i, (direction, threshold) in enumerate(self.constraints):
+            z = (mu[..., i] - threshold) / (sigma[..., i] + 1e-8)
+            p = normal.cdf(z)
+            if direction == "lt":
+                p = 1 - p
+            probs.append(p)
+        probs = torch.stack(probs, dim=-1)
+        return probs.prod(dim=-1)
+
+    ##################################################
+    # coverage mask
+    ##################################################
+    def coverage_mask(self, X):
+        dist = torch.cdist(self.grid_Z, X)
+        covered = (dist <= self.radius).any(dim=-1)
+        return covered
+
+    ##################################################
+    # expected coverage U(A)
+    ##################################################
+    def expected_coverage(self, X, p_feas=None):
+        if p_feas is None:
+            p_feas = self.posterior_feasibility()
+        covered = self.coverage_mask(X)
+        return (p_feas * covered.float()).sum()
+
+    ##################################################
+    # Greedy completion
+    ##################################################
+    def greedy_complete(self, current_points, p_feas):
+        A = current_points.clone()
+        covered = self.coverage_mask(A)
+        for _ in range(self.k - 1):
+            dist = torch.cdist(self.grid_Z, self.candidate_set)
+            candidate_cover = (dist <= self.radius)
+            marginal = (candidate_cover & (~covered[:, None]))
+            gains = (p_feas[:, None] * marginal.float()).sum(dim=0)
+            idx = gains.argmax()
+            xnew = self.candidate_set[idx].unsqueeze(0)
+            A = torch.cat([A, xnew], dim=0)
+            covered = covered | candidate_cover[:, idx]
+        return A
+
+    ##################################################
+    # Forward
+    ##################################################
     @t_batch_mode_transform(expected_q=1)
     def forward(self, X):
-        """Evaluate the LookaheadCAS acquisition function on candidate set X."""
-        self._thresholds = self._thresholds.to(X)
-        posterior = self.model.posterior(X)
-        mus = posterior.mean
-        std = posterior.variance.sqrt()
-        beta_val = self.beta**0.5
-
-        # --- VolumeCAS Score (Feasibility Ratio) ---
-        lcb = mus - beta_val * std
-        ucb = mus + beta_val * std
-
-        vol_b = (ucb - lcb).prod(dim=-1)
-
-        feasible_lcb = lcb.clone()
-        feasible_ucb = ucb.clone()
-
-        for i, (direction, threshold) in enumerate(self.constraints):
-            if direction == "gt":
-                feasible_lcb[..., i] = torch.max(lcb[..., i], self._thresholds[i])
-            else: # "lt"
-                feasible_ucb[..., i] = torch.min(ucb[..., i], self._thresholds[i])
-        
-        vol_b1 = (feasible_ucb - feasible_lcb).clamp(min=0.0).prod(dim=-1)
-
-        ratio = vol_b1 / (vol_b + 1e-9)
-        volume_cas_score = ratio.pow(self.gamma)
-
-        # --- Novelty Score ---
-        if self.train_inputs is not None and self.train_inputs.shape[0] > 0:
-            min_dist = torch.cdist(X.squeeze(1), self.train_inputs).min(dim=-1).values
-        else:
-            min_dist = torch.full((X.shape[0],), 1e6, dtype=X.dtype, device=X.device)
-
-        novelty_score = self.lambda_novelty * min_dist
-
-        # --- Final Acquisition Value ---
-        acq_value = volume_cas_score * novelty_score.unsqueeze(-1)
-        
-        return acq_value.squeeze(-1)
+        Xcand = X.squeeze(1)
+        p_feas = self.posterior_feasibility()
+        U_before = self.expected_coverage(self.train_X, p_feas)
+        acq_values = []
+        for x in Xcand:
+            x = x.unsqueeze(0)
+            A0 = torch.cat([self.train_X, x], dim=0)
+            A = self.greedy_complete(A0, p_feas)
+            U_after = self.expected_coverage(A, p_feas)
+            #
+            # VolumeCAS feasibility term
+            #
+            posterior = self.model.posterior(x.unsqueeze(0))
+            mu = posterior.mean.squeeze()
+            sigma = posterior.variance.sqrt().squeeze()
+            beta_sqrt = self.beta**0.5
+            lcb = mu - beta_sqrt * sigma
+            ucb = mu + beta_sqrt * sigma
+            V = (ucb - lcb).prod()
+            feasible_lcb = lcb.clone()
+            feasible_ucb = ucb.clone()
+            for i, (direction, threshold) in enumerate(self.constraints):
+                if direction == "gt":
+                    feasible_lcb[i] = max(lcb[i], threshold)
+                else:
+                    feasible_ucb[i] = min(ucb[i], threshold)
+            Vplus = (feasible_ucb - feasible_lcb).clamp(min=0).prod()
+            R = Vplus / (V + 1e-8)
+            score = R.pow(self.gamma) * (U_after - U_before)
+            acq_values.append(score)
+        return torch.stack(acq_values)
